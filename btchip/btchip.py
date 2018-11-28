@@ -18,7 +18,7 @@
 """
 
 from .btchipComm import *
-from .bitcoinTransaction import *
+from .oceanTransaction import *
 from .bitcoinVarint import *
 from .btchipException import *
 from .btchipHelpers import *
@@ -130,12 +130,13 @@ class btchip:
 		result['chainCode'] = response[offset : offset + 32]
 		return result
 
-	def getTrustedInput(self, transaction, index):
+	def getTrustedInput(self, transaction: oceanTransaction, index):
 		result = {}
 		# Header
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00 ]
 		params = bytearray.fromhex("%.8x" % (index))
-		params.extend(transaction.version)
+		params.extend(transaction.getVersion())
+		params.extend(transaction.getFlag())
 		writeVarint(len(transaction.inputs), params)
 		apdu.append(len(params))
 		apdu.extend(params)
@@ -143,20 +144,20 @@ class btchip:
 		# Each input
 		for trinput in transaction.inputs:
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
-			params = bytearray(trinput.prevOut)
-			writeVarint(len(trinput.script), params)
+			params = bytearray(trinput.getPrevOut())
+			writeVarint(len(trinput.getScript()), params)
 			apdu.append(len(params))
 			apdu.extend(params)
 			self.dongle.exchange(bytearray(apdu))
 			offset = 0
 			while True:
 				blockLength = 251
-				if ((offset + blockLength) < len(trinput.script)):
+				if ((offset + blockLength) < len(trinput.getScript())):
 					dataLength = blockLength
 				else:
-					dataLength = len(trinput.script) - offset
-				params = bytearray(trinput.script[offset : offset + dataLength])
-				if ((offset + dataLength) == len(trinput.script)):
+					dataLength = len(trinput.getScript()) - offset
+				params = bytearray(trinput.getScript()[offset : offset + dataLength])
+				if ((offset + dataLength) == len(trinput.getScript())):
 					params.extend(trinput.sequence)
 				apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, len(params) ]
 				apdu.extend(params)
@@ -272,7 +273,7 @@ class btchip:
 		outputs = None
 		if rawTx is not None:
 			try:
-				fullTx = bitcoinTransaction(bytearray(rawTx))
+				fullTx = oceanTransaction(bytearray(rawTx))
 				outputs = fullTx.serializeOutputs()
 				if len(donglePath) != 0:
 					apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_HASH_INPUT_FINALIZE_FULL, 0xFF, 0x00 ]

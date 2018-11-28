@@ -31,7 +31,6 @@ except:
 from .btchipComm import getDongle, DongleWait
 from .btchip import btchip
 from .btchipUtils import compress_public_key,format_transaction, get_regular_input_script
-from .bitcoinTransaction import bitcoinTransaction
 from .btchipException import BTChipException
 
 import ui.personalization00start
