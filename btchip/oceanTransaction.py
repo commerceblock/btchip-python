@@ -20,7 +20,7 @@
 from .bitcoinVarint import *
 from binascii import hexlify
 from collections import namedtuple
-from electrumx.lib.tx import DeserializerOcean TxOcean TxInputOcean TxOutputOcean
+from electrumx.lib.tx import DeserializerOcean, TxOcean, TxInputOcean, TxOutputOcean
 
 class oceanTransaction(TxOcean):
 	def __init__(self, orig:TxOcean=None, binary:bytes=None, start=0):
@@ -63,7 +63,7 @@ class oceanTransaction(TxOcean):
 			writeVarint(len(self.outputs), result)
 			for troutput in self.outputs:
 				result.extend(troutput.serialize())
-			result.extend(self.locktime
+			result.extend(self.locktime)
 			if useWitness:
 				result.extend(self.inwitness)
 				result.extend(self.outwitness)
@@ -102,12 +102,13 @@ class oceanInput(TxInputOcean):
 
 	def serialize(self):
 		result = []
-		result.extend(self.prev_hash
-		result.extend(self.prev_idx
+		result.extend(self.prev_hash)
+		result.extend(self.prev_idx)
 		writeVarint(self.getScriptLength(), result)
 		result.extend(self.script)
 		result.extend(self.sequence)
-		if iss=self.issuance is not None:
+		if self.issuance is not None:
+			iss=self.issuance
 			result.extend(iss.issuance_none)
 			result.extend(iss.issuance_entropy)
 			result.extend(iss.amount)
@@ -148,16 +149,16 @@ class oceanOutput(TxOutputOcean):
 
 	def serialize(self):
 		result = []
-		result.extend(self.asset
-		result.extend(self.value	
-		result.extend(self.nonce
+		result.extend(self.asset)
+		result.extend(self.value)	
+		result.extend(self.nonce)
 		writeVarint(self.getScriptLength(), result)
 		result.extend(self.script)
 		return result
 
 	def __str__(self):
-		buf =  "Asset : " + hexlify(self.getAsset()) + "\r\n"
-		buf += "Amount : " + hexlify(self.getAmount()) + "\r\n"
-		buf += "Nonce : " + hexlify(self.) + "\r\n"
+		buf =  "Asset : " + hexlify(self.asset) + "\r\n"
+		buf += "Amount : " + hexlify(self.amount) + "\r\n"
+		buf += "Nonce : " + hexlify(self.nonce) + "\r\n"
 		buf += "Script : " + hexlify(self.script) + "\r\n"
 		return buf
