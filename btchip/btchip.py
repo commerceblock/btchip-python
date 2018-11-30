@@ -19,6 +19,7 @@
 
 from .btchipComm import *
 from .oceanTransaction import *
+from .bitcoinTransaction import *
 from .bitcoinVarint import *
 from .btchipException import *
 from .btchipHelpers import *
@@ -130,13 +131,12 @@ class btchip:
 		result['chainCode'] = response[offset : offset + 32]
 		return result
 
-	def getTrustedInput(self, transaction: oceanTransaction, index):
+	def getTrustedInput(self, transaction: bitcoinTransaction, index):
 		result = {}
 		# Header
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00 ]
 		params = bytearray.fromhex("%.8x" % (index))
-		params.extend(transaction.getVersion())
-		params.extend(transaction.getFlag())
+		params.extend(transaction.version)
 		writeVarint(len(transaction.inputs), params)
 		apdu.append(len(params))
 		apdu.extend(params)
@@ -144,21 +144,92 @@ class btchip:
 		# Each input
 		for trinput in transaction.inputs:
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
-			params = bytearray(trinput.getPrevOut())
-			writeVarint(len(trinput.getScript()), params)
+			params = bytearray(trinput.prevOut)
+			writeVarint(len(trinput.script), params)
 			apdu.append(len(params))
 			apdu.extend(params)
 			self.dongle.exchange(bytearray(apdu))
 			offset = 0
 			while True:
 				blockLength = 251
-				if ((offset + blockLength) < len(trinput.getScript())):
+				if ((offset + blockLength) < len(trinput.script)):
 					dataLength = blockLength
 				else:
-					dataLength = len(trinput.getScript()) - offset
-				params = bytearray(trinput.getScript()[offset : offset + dataLength])
-				if ((offset + dataLength) == len(trinput.getScript())):
+					dataLength = len(trinput.script) - offset
+				params = bytearray(trinput.script[offset : offset + dataLength])
+				if ((offset + dataLength) == len(trinput.script)):
 					params.extend(trinput.sequence)
+				apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, len(params) ]
+				apdu.extend(params)
+				self.dongle.exchange(bytearray(apdu))
+				offset += dataLength
+				if (offset >= len(trinput.script)):
+					break
+		# Number of outputs
+		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
+		params = []
+		writeVarint(len(transaction.outputs), params)
+		apdu.append(len(params))
+		apdu.extend(params)
+		self.dongle.exchange(bytearray(apdu))
+		# Each output
+		indexOutput = 0
+		for troutput in transaction.outputs:
+			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
+			params = bytearray(troutput.amount)
+			writeVarint(len(troutput.script), params)
+			apdu.append(len(params))
+			apdu.extend(params)
+			self.dongle.exchange(bytearray(apdu))
+			offset = 0
+			while (offset < len(troutput.script)):
+				blockLength = 255
+				if ((offset + blockLength) < len(troutput.script)):
+					dataLength = blockLength
+				else:
+					dataLength = len(troutput.script) - offset
+				apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, dataLength ]
+				apdu.extend(troutput.script[offset : offset + dataLength])
+				self.dongle.exchange(bytearray(apdu))
+				offset += dataLength
+		# Locktime
+		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, len(transaction.lockTime) ]
+		apdu.extend(transaction.lockTime)
+		response = self.dongle.exchange(bytearray(apdu))
+		result['trustedInput'] = True
+		result['value'] = response
+		return result
+
+	def getTrustedInputOcean(self, transaction: oceanTransaction, index):
+		result = {}
+		# Header
+		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00 ]
+		params = bytearray.fromhex("%.8x" % (index))
+		params.extend(bytearray(transaction.version))
+		#params.extend(bytearray(transaction.flag))
+		writeVarint(len(transaction.inputs), params)
+		apdu.append(len(params))
+		apdu.extend(params)
+		self.dongle.exchange(bytearray(apdu))
+		# Each input
+		for trinput in transaction.inputs:
+			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
+			params = bytearray(trinput.prev_hash)
+			params.extend(bytearray(trinput.prev_idx))
+			writeVarint(len(trinput.script), params)
+			apdu.append(len(params))
+			apdu.extend(params)
+			self.dongle.exchange(bytearray(apdu))
+			offset = 0
+			while True:
+				blockLength = 251
+				if ((offset + blockLength) < len(trinput.script)):
+					dataLength = blockLength
+				else:
+					dataLength = len(trinput.script) - offset
+				params = bytearray(trinput.script[offset : offset + dataLength])
+				if ((offset + dataLength) == len(trinput.script)):
+					params.extend(bytearray(trinput.sequence))
 				apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, len(params) ]
 				apdu.extend(params)
 				self.dongle.exchange(bytearray(apdu))
@@ -273,7 +344,7 @@ class btchip:
 		outputs = None
 		if rawTx is not None:
 			try:
-				fullTx = oceanTransaction(bytearray(rawTx))
+				fullTx = bitcoinTransaction(bytearray(rawTx))
 				outputs = fullTx.serializeOutputs()
 				if len(donglePath) != 0:
 					apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_HASH_INPUT_FINALIZE_FULL, 0xFF, 0x00 ]
@@ -302,8 +373,8 @@ class btchip:
 		if not alternateEncoding:
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_HASH_INPUT_FINALIZE, 0x02, 0x00 ]
 			params = []
-			params.append(len(outputAddress))
-			params.extend(bytearray(outputAddress))
+			params.extend(bytearray(len(outputAddress)))
+			params.extend(bytearray(outputAddress.encode()))
 			writeHexAmountBE(btc_to_satoshi(str(amount)), params)
 			writeHexAmountBE(btc_to_satoshi(str(fees)), params)
 			params.extend(donglePath)
