@@ -131,20 +131,21 @@ class btchip:
 		result['chainCode'] = response[offset : offset + 32]
 		return result
 
-	def getTrustedInput(self, transaction: bitcoinTransaction, index):
+	def getTrustedInput(self, transaction, index):
 		result = {}
 		# Header
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00 ]
 		params = bytearray.fromhex("%.8x" % (index))
-		params.extend(transaction.version)
-		writeVarint(len(transaction.inputs), params)
+		params.extend(bytearray(struct.pack('>I', int(transaction.version))))
+		writeVarint(len(transaction.inputs()), params)
 		apdu.append(len(params))
 		apdu.extend(params)
 		self.dongle.exchange(bytearray(apdu))
 		# Each input
-		for trinput in transaction.inputs:
+		for trinput in transaction.inputs():
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
-			params = bytearray(trinput.prevOut)
+			params = bytearray(trinput.prev_hash)
+			params.extend(bytearray(trinput.prev_idx))
 			writeVarint(len(trinput.script), params)
 			apdu.append(len(params))
 			apdu.extend(params)
@@ -168,13 +169,13 @@ class btchip:
 		# Number of outputs
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
 		params = []
-		writeVarint(len(transaction.outputs), params)
+		writeVarint(len(transaction.outputs()), params)
 		apdu.append(len(params))
 		apdu.extend(params)
 		self.dongle.exchange(bytearray(apdu))
 		# Each output
 		indexOutput = 0
-		for troutput in transaction.outputs:
+		for troutput in transaction.outputs():
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
 			params = bytearray(troutput.amount)
 			writeVarint(len(troutput.script), params)
@@ -239,13 +240,13 @@ class btchip:
 		# Number of outputs
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
 		params = []
-		writeVarint(len(transaction.outputs), params)
+		writeVarint(len(transaction.outputs()), params)
 		apdu.append(len(params))
 		apdu.extend(params)
 		self.dongle.exchange(bytearray(apdu))
 		# Each output
 		indexOutput = 0
-		for troutput in transaction.outputs:
+		for troutput in transaction.outputs():
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
 			params = bytearray(troutput.amount)
 			writeVarint(len(troutput.script), params)
