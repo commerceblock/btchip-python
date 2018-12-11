@@ -131,21 +131,20 @@ class btchip:
 		result['chainCode'] = response[offset : offset + 32]
 		return result
 
-	def getTrustedInput(self, transaction, index):
+	def getTrustedInput(self, transaction: bitcoinTransaction, index):
 		result = {}
 		# Header
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00 ]
 		params = bytearray.fromhex("%.8x" % (index))
-		params.extend(bytearray(struct.pack('>I', int(transaction.version))))
-		writeVarint(len(transaction.inputs()), params)
+		params.extend(transaction.version)
+		writeVarint(len(transaction.inputs), params)
 		apdu.append(len(params))
 		apdu.extend(params)
 		self.dongle.exchange(bytearray(apdu))
 		# Each input
-		for trinput in transaction.inputs():
+		for trinput in transaction.inputs:
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
-			params = bytearray(trinput.prev_hash)
-			params.extend(bytearray(trinput.prev_idx))
+			params = bytearray(trinput.prevOut)
 			writeVarint(len(trinput.script), params)
 			apdu.append(len(params))
 			apdu.extend(params)
@@ -169,13 +168,13 @@ class btchip:
 		# Number of outputs
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
 		params = []
-		writeVarint(len(transaction.outputs()), params)
+		writeVarint(len(transaction.outputs), params)
 		apdu.append(len(params))
 		apdu.extend(params)
 		self.dongle.exchange(bytearray(apdu))
 		# Each output
 		indexOutput = 0
-		for troutput in transaction.outputs():
+		for troutput in transaction.outputs:
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
 			params = bytearray(troutput.amount)
 			writeVarint(len(troutput.script), params)
@@ -206,17 +205,21 @@ class btchip:
 		# Header
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00 ]
 		params = bytearray.fromhex("%.8x" % (index))
-		params.extend(bytearray(transaction.version))
-		#params.extend(bytearray(transaction.flag))
+		params.extend(struct.pack('>I',transaction.version))
+		params.extend(struct.pack('>B',transaction.flag))
 		writeVarint(len(transaction.inputs), params)
 		apdu.append(len(params))
 		apdu.extend(params)
 		self.dongle.exchange(bytearray(apdu))
+		from PyQt5.QtCore import pyqtRemoveInputHook
+		from pdb import set_trace
+		pyqtRemoveInputHook()
+		set_trace()
 		# Each input
 		for trinput in transaction.inputs:
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
 			params = bytearray(trinput.prev_hash)
-			params.extend(bytearray(trinput.prev_idx))
+			params.extend(struct.pack('>I',trinput.prev_idx))
 			writeVarint(len(trinput.script), params)
 			apdu.append(len(params))
 			apdu.extend(params)
@@ -228,27 +231,32 @@ class btchip:
 					dataLength = blockLength
 				else:
 					dataLength = len(trinput.script) - offset
-				params = bytearray(trinput.script[offset : offset + dataLength])
+				params=bytearray(trinput.script[offset : offset + dataLength])
+				#Append the sequence data if we have finished sending the script data.
 				if ((offset + dataLength) == len(trinput.script)):
-					params.extend(bytearray(trinput.sequence))
+					params.extend(struct.pack('<I', trinput.sequence))
 				apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, len(params) ]
 				apdu.extend(params)
 				self.dongle.exchange(bytearray(apdu))
 				offset += dataLength
 				if (offset >= len(trinput.script)):
 					break
+		set_trace()
 		# Number of outputs
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
 		params = []
-		writeVarint(len(transaction.outputs()), params)
+		writeVarint(len(transaction.outputs), params)
 		apdu.append(len(params))
 		apdu.extend(params)
 		self.dongle.exchange(bytearray(apdu))
+		set_trace()
 		# Each output
 		indexOutput = 0
-		for troutput in transaction.outputs():
+		for troutput in transaction.outputs:
 			apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
-			params = bytearray(troutput.amount)
+			params = bytearray(troutput.asset)	
+			params.extend(bytearray(troutput.value))
+			params.extend(bytearray(troutput.nonce))
 			writeVarint(len(troutput.script), params)
 			apdu.append(len(params))
 			apdu.extend(params)
@@ -262,14 +270,17 @@ class btchip:
 					dataLength = len(troutput.script) - offset
 				apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, dataLength ]
 				apdu.extend(troutput.script[offset : offset + dataLength])
+				set_trace()
 				self.dongle.exchange(bytearray(apdu))
 				offset += dataLength
 		# Locktime
 		apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, len(transaction.lockTime) ]
-		apdu.extend(transaction.lockTime)
+		apdu.extend(struct.pack('<I',transaction.lockTime))
+		set_trace()
 		response = self.dongle.exchange(bytearray(apdu))
 		result['trustedInput'] = True
 		result['value'] = response
+		set_trace()
 		return result
 
 	def startUntrustedTransaction(self, newTransaction, inputIndex, outputList, redeemScript, version=0x01, cashAddr=False):
