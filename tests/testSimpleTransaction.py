@@ -52,9 +52,13 @@ publicKey = compress_public_key(app.getWalletPublicKey("0'/0/0")['publicKey'])
 # Get the trusted input associated to the UTXO
 transaction = bitcoinTransaction(UTX)
 outputScript = transaction.outputs[UTXO_INDEX].script
+print("Getting trusted input...")
 trustedInput = app.getTrustedInput(transaction, UTXO_INDEX)
+print("Got trusted input.")
 # Start composing the transaction
+print("Starting untrusted transaction...")
 app.startUntrustedTransaction(True, 0, [trustedInput], outputScript)
+print("Finalizing input...")
 outputData = app.finalizeInput(ADDRESS, AMOUNT, FEES, "0'/1/0")
 dongle.close()
 # Wait for the second factor confirmation

@@ -37,7 +37,7 @@ try:
 except:
 	pass
 # Authenticate
-app.verifyPin("1234")
+#app.verifyPin("0000")
 # Start signing
 app.signMessagePrepare("0'/0/0", MESSAGE)
 dongle.close()

@@ -29,7 +29,8 @@ unpack_uint16_from = Struct('<H').unpack_from
 unpack_uint32_from = Struct('<I').unpack_from
 unpack_uint64_from = Struct('<Q').unpack_from
 
-hex_to_bytes = bytes.fromhex
+def hex_to_bytes(val):
+    bytearray(val).decode('hex')
 
 # Method decorator.  To be used for calculations that will always                                                                                               
 # deliver the same result.  The method cannot take any arguments                                                                                                
@@ -78,6 +79,7 @@ class Deserializer(object):
     def __init__(self, binary, start=0):
         assert isinstance(binary, bytes)
         self.binary = binary
+        assert isinstance(self.binary, bytes)
         self.binary_length = len(binary)
         self.cursor = start
 
@@ -111,7 +113,9 @@ class Deserializer(object):
 
     def _read_inputs(self):
         read_input = self._read_input
-        return [read_input() for i in range(self._read_varint())]
+        n_inputs=self._read_varint()
+        print("N inputs: {}".format(n_inputs))
+        return [read_input() for i in range(n_inputs)]
 
     def _read_input(self):
         return TxInput(
@@ -122,10 +126,13 @@ class Deserializer(object):
         )
 
     def _read_outputs(self):
+        n=self._read_varint()
+        print("Reading {} outputs".format(n))
         read_output = self._read_output
-        return [read_output() for i in range(self._read_varint())]
+        return [read_output() for i in range(n)]
 
     def _read_output(self):
+        print("Reading output")
         return TxOutput(
             self._read_le_int64(),  # value
             self._read_varbytes(),  # pk_script
@@ -139,14 +146,20 @@ class Deserializer(object):
     def _read_nbytes(self, n):
         cursor = self.cursor
         self.cursor = end = cursor + n
+        print ("Length: {}, end: {}".format(self.binary_length, end))
         assert self.binary_length >= end
+#        print ("Cursor: {}, end: {}".format(cursor, end))
+#        for b in self.binary:
+#            print('{}'.format(int(b.encode('hex'),16)))
         return self.binary[cursor:end]
 
     def _read_varbytes(self):
-        return self._read_nbytes(self._read_varint())
+        n=self._read_varint()
+        print("Reading {} bytes".format(n))
+        return self._read_nbytes(n)
 
     def _read_varint(self):
-        n = self.binary[self.cursor]
+        n = int(self.binary[self.cursor])
         self.cursor += 1
         if n < 253:
             return n
@@ -272,19 +285,25 @@ class DeserializerOcean(Deserializer):
         return tx, vsize
 
     def _read_tx_parts(self):
+        assert isinstance(self.binary, bytes)
         '''Return a (deserialized TX, tx_hash, vsize) tuple.'''
         start = self.cursor
         version = self._read_le_int32()
+        print('Version: {}'.format(version))
         orig_ser = self.binary[start:self.cursor]
 
-        flag = self._read_byte()    # for witness
+        flag = int(self._read_byte())    # for witness
+        assert isinstance(flag, int)
+        print('flag: {}'.format(flag))
         orig_ser += b'\x00'     # for serialization hash flag is always 0
 
         start = self.cursor
         inputs = self._read_inputs()
         outputs = self._read_outputs()
-        locktime = self._read_le_uint32()
+        lockTime = int(self._read_le_uint32())
 
+        print("Read lockTime: {}".format(lockTime))
+        
         orig_ser += self.binary[start:self.cursor]
 
         start = self.cursor
@@ -301,17 +320,22 @@ class DeserializerOcean(Deserializer):
 
         #print(double_sha256(orig_ser))
         return TxOcean(version, flag, inputs, outputs, witness_in, witness_out,
-                        locktime), double_sha256(orig_ser), vsize
+                        lockTime), double_sha256(orig_ser), vsize
 
     def _read_input(self):
         '''Return a TxInputOcean object'''
+        print("Reading prev hash")
         prev_hash = self._read_nbytes(32)
+        print("Reading prev idx")
         prev_idx = self._read_le_uint32()
+        print("Reading script")
         script = self._read_varbytes()
+        print("Reading sequence")
         sequence = self._read_le_uint32()
 
         issuance = None
         if prev_idx != TxInputOcean.MINUS_1:
+            print("Reading issuance")
             if prev_idx & TxInputOcean.OUTPOINT_ISSUANCE_FLAG:
                 issuance_nonce = self._read_nbytes(32)
                 issuance_entropy = self._read_nbytes(32)
@@ -327,6 +351,7 @@ class DeserializerOcean(Deserializer):
                 )
             prev_idx &= TxInputOcean.OUTPOINT_INDEX_MASK
 
+        print("Returning input")
         return TxInputOcean(
             prev_hash,
             prev_idx,
@@ -402,13 +427,13 @@ class DeserializerOcean(Deserializer):
 
 class TxOcean():
     def __init__(self, version=None, flag=None, inputs=[], outputs=[], 
-            locktime=None, inwitness=None, outwitness=None):
+                 inwitness=None, outwitness=None, lockTime=None):
         self.name="TxOcean"
         self.version=version
         self.flag=flag 
         self.inputs=inputs 
         self.outputs=outputs 
-        self.locktime=locktime 
+        self.lockTime=lockTime
         self.inwitness=inwitness
         self.outwitness=outwitness
 
@@ -424,7 +449,7 @@ class TxOcean():
                 self.inputs[0].is_initial_issuance)
 
 class oceanTransaction(TxOcean):
-	def __init__(self, orig:TxOcean=None, binary:bytes=None, start=0):
+	def __init__(self, orig=None, binary=None, start=0):
 		#Initialize either with a TxOcean object, or deserialize from bytes
 		if orig is None:
 			self._non_copy_constructor(binary, start)
@@ -434,7 +459,7 @@ class oceanTransaction(TxOcean):
 	def _copy_constructor(self, orig):
 		self.version = orig.version
 		self.flag = orig.flag
-		self.locktime = orig.locktime
+		self.lockTime = orig.lockTime
 		self.inwitness = orig.inwitness
 		self.outwitness = orig.outwitness
 		self.inputs=[]
@@ -450,7 +475,7 @@ class oceanTransaction(TxOcean):
 		self._copy_constructor(DeserializerOcean(binary, start).read_tx())
 		
 
-	def serialize(self, skipOutputLocktime=False, skipWitness=False):
+	def serialize(self, skipOutputLockTime=False, skipWitness=False):
 		if skipWitness or (not self.inwitness and not self.outwitness):
 			useWitness = False
 		else:
@@ -461,11 +486,11 @@ class oceanTransaction(TxOcean):
 		writeVarint(len(self.inputs), result)
 		for trinput in self.inputs:
 			result.extend(trinput.serialize())
-		if not skipOutputLocktime:
+		if not skipOutputLockTime:
 			writeVarint(len(self.outputs), result)
 			for troutput in self.outputs:
 				result.extend(troutput.serialize())
-			result.extend(self.locktime)
+			result.extend(self.lockTime)
 			if useWitness:
 				result.extend(self.inwitness)
 				result.extend(self.outwitness)
@@ -543,7 +568,7 @@ class oceanInput(TxInputOcean):
         self.sequence = None
         self.issuance = None
 
-    def _copy_constructor(self, orig:TxInputOcean):
+    def _copy_constructor(self, orig):
         self.prev_hash = orig.prev_hash
         self.prev_idx = orig.prev_idx
         self.script = orig.script
@@ -591,7 +616,7 @@ class oceanOutput(TxOutputOcean):
 		self.nonce = None
 		self.script = None
 
-	def _copy_constructor(self, orig:TxInputOcean):
+	def _copy_constructor(self, orig):
 		self.asset = orig.asset
 		self.value = orig.value
 		self.nonce = orig.nonce
