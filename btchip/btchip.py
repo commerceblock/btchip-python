@@ -201,10 +201,6 @@ class btchip:
                 return result
 
         def getTrustedInputOcean(self, transaction, index):
-                from PyQt5.QtCore import pyqtRemoveInputHook
-                from pdb import set_trace
-                pyqtRemoveInputHook()
-                #set_trace()
                 result = {}
                 # Header
                 apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00 ]
@@ -241,7 +237,6 @@ class btchip:
                                 offset += dataLength
                                 if (offset >= len(trinput.script)):
                                         break
-#                set_trace()
                 # Number of outputs
                 apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
                 params = []
@@ -249,7 +244,6 @@ class btchip:
                 apdu.append(len(params))
                 apdu.extend(params)
                 self.dongle.exchange(bytearray(apdu))
-#                set_trace()
                 # Each output
                 indexOutput = 0
                 for troutput in transaction.outputs:
@@ -270,18 +264,15 @@ class btchip:
                                         dataLength = len(troutput.script) - offset
                                 apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, dataLength ]
                                 apdu.extend(troutput.script[offset : offset + dataLength])
-                                #set_trace()
                                 self.dongle.exchange(bytearray(apdu))
                                 offset += dataLength
                 # LockTime
-                #set_trace()
                 tl_bytes=struct.pack('<I',transaction.lockTime)
                 apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00, len(tl_bytes) ]
                 apdu.extend(tl_bytes)
                 response = self.dongle.exchange(bytearray(apdu))
                 result['trustedInput'] = True
                 result['value'] = response
-                #set_trace()
                 return result
 
         def startUntrustedTransaction(self, newTransaction, inputIndex, outputList, redeemScript, version=0x01, cashAddr=False, oceanTx=False):
@@ -340,7 +331,6 @@ class btchip:
                         apdu.extend(params)
                         self.dongle.exchange(bytearray(apdu))
                         offset = 0
-                        response=bytearray()
                         while(offset < len(script)):
                                 blockLength = 255
                                 if ((offset + blockLength) < len(script)):
@@ -352,24 +342,17 @@ class btchip:
                                         params.extend(sequence)
                                 apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_HASH_INPUT_START, 0x80, 0x00, len(params) ]
                                 apdu.extend(params)
-                                response.extend(self.dongle.exchange(bytearray(apdu)))
+                                self.dongle.exchange(bytearray(apdu))
                                 offset += blockLength
                         currentIndex += 1
 
-                        result['keycardData'] = response[offset + 1 : offset + 1 + keycardDataLength]                        
-                if outputs == None:
-                        result['outputData'] = response[1 : 1 + response[0]]
-                else:
-                        result['outputData'] = outputs
-                return result
 
-
-        def startUntrustedTransactionOcean(self, newTransaction, inputIndex, outputList, redeemScript):
-                return self.startUntrustedTransaction(newTransaction, inputIndex, outputList, redeemScript, 0x02, False, True)
+        def startUntrustedTransactionOcean(self, newTransaction, inputIndex, outputList, redeemScript, version=0x02):
+                return self.startUntrustedTransaction(newTransaction, inputIndex, outputList, redeemScript, version, False, True)
         
 
         
-        def finalizeInput(self, outputAddress, amount, fees, changePath, rawTx=None, contractHash=None):
+        def finalizeInput(self, outputAddress, amount, fees, changePath, rawTx=None, contractHash=None, txClass=bitcoinTransaction):
                 alternateEncoding = False
                 donglePath = parse_bip32_path(changePath)
                 if self.needKeyCache:
@@ -378,8 +361,6 @@ class btchip:
                 outputs = None
                 if rawTx is not None:
                         try:
-                                fullTx = bitcoinTransaction(bytearray(rawTx))
-                                outputs = fullTx.serializeOutputs()
                                 if len(donglePath) != 0:
                                         apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_HASH_INPUT_FINALIZE_FULL, 0xFF, 0x00 ]
                                         params = []
@@ -387,6 +368,14 @@ class btchip:
                                         apdu.append(len(params))
                                         apdu.extend(params)
                                         response = self.dongle.exchange(bytearray(apdu))
+                                        
+ 
+                                fullTx = txClass(bytes(rawTx))
+                                n_outputs=len(fullTx.outputs)
+                                for i in range(n_outputs):
+                                        print("Output {}: {}".format(i, fullTx.outputs[i].serialize()))
+                                outputs=fullTx.serializeOutputs()
+                                print("Outputs: {}".format(outputs))
                                 offset = 0
                                 while (offset < len(outputs)):
                                         blockLength = self.scriptBlockLength
@@ -397,7 +386,7 @@ class btchip:
                                                 dataLength = len(outputs) - offset
                                                 p1 = 0x80
                                         apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_HASH_INPUT_FINALIZE_FULL, \
-                                                p1, 0x00, dataLength ]
+                                                 p1, 0x00, dataLength ]
                                         apdu.extend(outputs[offset : offset + dataLength])
                                         response = self.dongle.exchange(bytearray(apdu))
                                         offset += dataLength
@@ -408,7 +397,8 @@ class btchip:
                         apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_HASH_INPUT_FINALIZE, 0x02, 0x00 ]
                         params = []
                         params.extend(bytearray(len(outputAddress)))
-                        params.extend(bytearray(outputAddress.encode()))
+                        assert isinstance(outputAddress, bytes)
+                        params.extend(bytearray(outputAddress))
                         writeHexAmountBE(btc_to_satoshi(str(amount)), params)
                         writeHexAmountBE(btc_to_satoshi(str(fees)), params)
                         params.extend(donglePath)
@@ -491,8 +481,10 @@ class btchip:
                 params.extend(bytearray(pin))
                 writeUint32BE(lockTime, params)
                 params.append(sighashType)
+                print("Untrusted hash sign params: {}".format(params))
                 apdu.append(len(params))
                 apdu.extend(params)
+#                result = bytearray.fromhex("3145022100D522E29F522CAF22D8A3B68EA461980CD1B218B1B176DBA15CD4D024E18AD1CA022027E435D8818710273D7084F73CF99C30499F79BAC092F39C79471E29D214449801")
                 result = self.dongle.exchange(bytearray(apdu))
                 result[0] = 0x30
                 return result

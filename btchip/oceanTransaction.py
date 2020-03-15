@@ -289,14 +289,14 @@ class DeserializerOcean(Deserializer):
         '''Return a (deserialized TX, tx_hash, vsize) tuple.'''
         start = self.cursor
         version = self._read_le_int32()
-        print('Version: {}'.format(version))
         orig_ser = self.binary[start:self.cursor]
+        print('Version: {}'.format(version))
 
         flag = int(self._read_byte())    # for witness
-        assert isinstance(flag, int)
-        print('flag: {}'.format(flag))
-        orig_ser += b'\x00'     # for serialization hash flag is always 0
 
+        print('flag: {}'.format(flag))
+        orig_ser += flag.to_bytes(1, byteorder='little')
+        
         start = self.cursor
         inputs = self._read_inputs()
         outputs = self._read_outputs()
@@ -449,59 +449,68 @@ class TxOcean():
                 self.inputs[0].is_initial_issuance)
 
 class oceanTransaction(TxOcean):
-	def __init__(self, orig=None, binary=None, start=0):
-		#Initialize either with a TxOcean object, or deserialize from bytes
-		if orig is None:
-			self._non_copy_constructor(binary, start)
-		else:
-			self._copy_constructor(orig)
+        def __init__(self, binary=None, orig=None, start=0):
+                #Initialize either with a TxOcean object, or deserialize from bytes
+                if orig is None:
+                        self._non_copy_constructor(binary, start)
+                else:
+                        self._copy_constructor(orig)
 
-	def _copy_constructor(self, orig):
-		self.version = orig.version
-		self.flag = orig.flag
-		self.lockTime = orig.lockTime
-		self.inwitness = orig.inwitness
-		self.outwitness = orig.outwitness
-		self.inputs=[]
-		for inpt in orig.inputs:
-			self.inputs.append(oceanInput(inpt))
-		self.outputs=[]
-		for outpt in orig.outputs:
-			self.outputs.append(oceanOutput(outpt))
+        def _copy_constructor(self, orig):
+                self.version = orig.version
+                self.flag = orig.flag
+                self.lockTime = orig.lockTime
+                self.inwitness = orig.inwitness
+                self.outwitness = orig.outwitness
+                self.inputs=[]
+                for inpt in orig.inputs:
+                        self.inputs.append(oceanInput(inpt))
+                self.outputs=[]
+                for outpt in orig.outputs:
+                        self.outputs.append(oceanOutput(outpt))
 
 
-	def _non_copy_constructor(self, binary, start):
-		assert binary is not None
-		self._copy_constructor(DeserializerOcean(binary, start).read_tx())
-		
+        def _non_copy_constructor(self, binary, start):
+                assert binary is not None
+                self._copy_constructor(DeserializerOcean(binary, start).read_tx())
+                
 
-	def serialize(self, skipOutputLockTime=False, skipWitness=False):
-		if skipWitness or (not self.inwitness and not self.outwitness):
-			useWitness = False
-		else:
-			useWitness = True
-		result = []
-		result.extend(self.version)
-		result.extend(self.flag)
-		writeVarint(len(self.inputs), result)
-		for trinput in self.inputs:
-			result.extend(trinput.serialize())
-		if not skipOutputLockTime:
-			writeVarint(len(self.outputs), result)
-			for troutput in self.outputs:
-				result.extend(troutput.serialize())
-			result.extend(self.lockTime)
-			if useWitness:
-				result.extend(self.inwitness)
-				result.extend(self.outwitness)
-		return result
+        def serialize(self, skipOutputLockTime=False, skipWitness=False):
+                if skipWitness or (not self.inwitness and not self.outwitness):
+                        useWitness = False
+                else:
+                        useWitness = True
+                result = []
+                result.extend(self.version)
+                result.extend(self.flag)
+                writeVarint(len(self.inputs), result)
+                for trinput in self.inputs:
+                        result.extend(trinput.serialize())
+                if not skipOutputLockTime:
+                        writeVarint(len(self.outputs), result)
+                        for troutput in self.outputs:
+                                result.extend(troutput.serialize())
+                        result.extend(self.lockTime)
+                        if useWitness:
+                                result.extend(self.inwitness)
+                                result.extend(self.outwitness)
+                return result
 
-	def serializeOutputs(self):
-		result = []
-		writeVarint(len(self.outputs), result)
-		for troutput in self.outputs:
-			result.extend(troutput.serialize())
-		return result
+        def serializeOutputs(self):
+            result = []
+            writeVarint(len(self.outputs), result)
+            for troutput in self.outputs:
+                result.extend(troutput.serialize())
+            return result
+
+        def serializeOutput(self, index):
+            result = []
+            if(index < len(self.outputs)):
+                writeVarint(1, result)
+                result.extend(self.outputs[index].serialize())
+            else:
+                return None
+            return result
 
 class TxInputOcean():
     '''Class representing a transaction input.'''
@@ -604,39 +613,39 @@ class oceanInput(TxInputOcean):
 
 
 class oceanOutput(TxOutputOcean):
-	def __init__(self, orig=None):
-		if orig is None:
-			self._non_copy_constructor()
-		else:
-			self._copy_constructor(orig)
+        def __init__(self, orig=None):
+                if orig is None:
+                        self._non_copy_constructor()
+                else:
+                        self._copy_constructor(orig)
 
-	def _non_copy_constructor(self):
-		self.asset = None
-		self.value = None
-		self.nonce = None
-		self.script = None
+        def _non_copy_constructor(self):
+                self.asset = None
+                self.value = None
+                self.nonce = None
+                self.script = None
 
-	def _copy_constructor(self, orig):
-		self.asset = orig.asset
-		self.value = orig.value
-		self.nonce = orig.nonce
-		self.script = orig.script
-		
-	def getScriptLength(self):
-		return len(self.script)
+        def _copy_constructor(self, orig):
+                self.asset = orig.asset
+                self.value = orig.value
+                self.nonce = orig.nonce
+                self.script = orig.script
+                
+        def getScriptLength(self):
+                return len(self.script)
 
-	def serialize(self):
-		result = []
-		result.extend(self.asset)
-		result.extend(self.value)	
-		result.extend(self.nonce)
-		writeVarint(self.getScriptLength(), result)
-		result.extend(self.script)
-		return result
+        def serialize(self):
+                result = []
+                result.extend(self.asset)
+                result.extend(self.value)        
+                result.extend(self.nonce)
+                writeVarint(self.getScriptLength(), result)
+                result.extend(self.script)
+                return result
 
-	def __str__(self):
-		buf =  "Asset : " + hexlify(self.asset) + "\r\n"
-		buf += "Amount : " + hexlify(self.amount) + "\r\n"
-		buf += "Nonce : " + hexlify(self.nonce) + "\r\n"
-		buf += "Script : " + hexlify(self.script) + "\r\n"
-		return buf
+        def __str__(self):
+                buf =  "Asset : " + hexlify(self.asset) + "\r\n"
+                buf += "Amount : " + hexlify(self.amount) + "\r\n"
+                buf += "Nonce : " + hexlify(self.nonce) + "\r\n"
+                buf += "Script : " + hexlify(self.script) + "\r\n"
+                return buf
