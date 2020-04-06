@@ -118,6 +118,8 @@ class btchip:
         def getWalletPublicKey(self, path, showOnScreen=False, segwit=False, segwitNative=False, cashAddr=False):
                 result = {}
                 donglePath = parse_bip32_path(path)
+                print("getWalletPublicKey path:{}".format(path))
+                print("getWalletPublicKey donglePath:{}".format(donglePath.hex()))
                 if self.needKeyCache:
                         self.resolvePublicKeysInPath(path)                        
                 apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_WALLET_PUBLIC_KEY, 0x01 if showOnScreen else 0x00, 0x03 if cashAddr else 0x02 if segwitNative else 0x01 if segwit else 0x00, len(donglePath) ]
@@ -205,9 +207,12 @@ class btchip:
                 # Header
                 apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x00, 0x00 ]
                 params = bytearray.fromhex("%.8x" % (index))
-                params.extend(struct.pack('>I',transaction.version))
-                params.extend(struct.pack('>B',transaction.flag))
+                params.extend(struct.pack('<I',transaction.version))
+                #params.extend(struct.pack('<B',transaction.flag))
                 writeVarint(len(transaction.inputs), params)
+
+                print("getTrustedInputOcean: header params: {}\n".format(params.hex()))
+                
                 apdu.append(len(params))
                 apdu.extend(params)
                 self.dongle.exchange(bytearray(apdu))
@@ -215,7 +220,8 @@ class btchip:
                 for trinput in transaction.inputs:
                         apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_GET_TRUSTED_INPUT, 0x80, 0x00 ]
                         params = bytearray(trinput.prev_hash)
-                        params.extend(struct.pack('>I',trinput.prev_idx))
+                        params.extend(struct.pack('<I',trinput.prev_idx))
+                        print("getTrustedInputOcean: prev_hash, prev_idx: {}\n".format(params.hex()))
                         writeVarint(len(trinput.script), params)
                         apdu.append(len(params))
                         apdu.extend(params)
@@ -292,11 +298,11 @@ class btchip:
                                 p2 = 0x80
                 apdu = [ self.BTCHIP_CLA, self.BTCHIP_INS_HASH_INPUT_START, 0x00, p2 ]
                 params = bytearray([version, 0x00, 0x00, 0x00])
-                if oceanTx:
-                        if segwit:
-                                params.append(0x01)
-                        else:
-                                params.append(0x00)
+                #if oceanTx:
+                #        if segwit:
+                #                params.append(0x01)
+                #        else:
+                #                params.append(0x00)
 
                 writeVarint(len(outputList), params)
 
@@ -347,7 +353,7 @@ class btchip:
                         currentIndex += 1
 
 
-        def startUntrustedTransactionOcean(self, newTransaction, inputIndex, outputList, redeemScript, version=0x02):
+        def startUntrustedTransactionOcean(self, newTransaction, inputIndex, outputList, redeemScript, version=0x01):
                 return self.startUntrustedTransaction(newTransaction, inputIndex, outputList, redeemScript, version, False, True)
         
 
@@ -487,6 +493,7 @@ class btchip:
 #                result = bytearray.fromhex("3145022100D522E29F522CAF22D8A3B68EA461980CD1B218B1B176DBA15CD4D024E18AD1CA022027E435D8818710273D7084F73CF99C30499F79BAC092F39C79471E29D214449801")
                 result = self.dongle.exchange(bytearray(apdu))
                 result[0] = 0x30
+                print("Hash sign result: {}".format(result.hex()))
                 return result
 
         def signMessagePrepareV1(self, path, message):
