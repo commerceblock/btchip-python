@@ -1,5 +1,5 @@
-btchip-python
-=============
+btchip-python-ocean
+===================
 
 Python communication library for Ledger Hardware Wallet products  
 
